@@ -101,7 +101,7 @@ async function handleMessage(ctx: Ctx, message: Record<string, any>): Promise<vo
 
   const text = String(message.text ?? "").trim();
   if (!text.startsWith("/")) {
-    await telegram.sendMessage(chatId, `Send a photo to get started, or /help.`);
+    await telegram.sendMessage(chatId, `Send /help to see what I can do.`);
     return;
   }
   const cmd = text.split(/[@\s]/, 1)[0];
@@ -143,7 +143,7 @@ async function handleMessage(ctx: Ctx, message: Record<string, any>): Promise<vo
         limit: 5,
       })) as JobRow[];
       if (!jobs.length) {
-        await telegram.sendMessage(chatId, "No jobs yet — send a photo!");
+        await telegram.sendMessage(chatId, "No jobs yet!");
         return;
       }
       const lines = jobs
