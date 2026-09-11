@@ -78,18 +78,24 @@ Statuses: `queued → submitted → processing → complete | failed | timed_out
   weaken them).
 - **Do** append a `job_events` row for every transition (`addEvent`).
 
-## Adding a new SaaS service
+## Adding a new SaaS service — in its OWN repository
 
-1. Copy `lib/services/image_to_video/` → `lib/services/<name>/`.
-2. Edit its `config.js` (`name`, `cost`, `provider`, `maxJobAgeMs`,
+The base repo ships exactly one worked example (`lib/services/image_to_video/`)
+and must stay clean of service accumulation. A new SaaS is a new repository:
+
+1. `git clone` the base repo into the new service's repo.
+2. Copy `lib/services/image_to_video/` → `lib/services/<name>/`.
+3. Edit its `config.js` (`name`, `cost`, `provider`, `maxJobAgeMs`,
    `pollAfterMs`, prompts/workflow).
-3. Rewrite `index.js`'s dispatch (input handling + provider submit) — it
+4. Rewrite `index.js`'s dispatch (input handling + provider submit) — it
    must never await generation output.
-4. Register in `lib/services/registry.js`.
-5. Route in `handlers/message.js`.
-6. `npx tgcloud push` — no schema change needed (jobs/payments are generic).
+5. Register in `lib/services/registry.js` (drop the example entry if unused).
+6. Route in `handlers/message.js`.
+7. Push to the new repo; `npx tgcloud push` — no schema change needed
+   (jobs/payments are generic).
 
-Full recipe: `services/README.md`.
+Full recipe: `services/README.md`. Never add a second service folder to the
+base repo — that belongs in its own clone.
 
 ## Deploy & migrate — two separate steps
 

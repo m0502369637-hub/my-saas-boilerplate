@@ -3,26 +3,25 @@
 **The full drop-in recipe lives at the repo root in [`services/README.md`](/services/README.md)**
 (the folder you'll reach for when adding a business module). The short version:
 
-1. Copy `lib/services/image_to_video/` → `lib/services/<your_name>/`.
-2. Edit its `config.js` (name, cost, provider, prompts, workflow knobs).
-3. Register it in `lib/services/registry.js`.
-4. Wire a route in `handlers/message.js`.
+1. **Clone this base repo into a new repository** for the new service —
+   never accumulate services in the base.
+2. Copy `lib/services/image_to_video/` → `lib/services/<your_name>/`.
+3. Edit its `config.js` (name, cost, provider, prompts, workflow knobs).
+4. Register it in `lib/services/registry.js` (drop the example if unused).
+5. Wire a route in `handlers/message.js`.
 
 Payments, the job state machine, polling, timeouts, refunds, the sweep, and
 the relay handoff are all generic `lib/` glue — a new service touches none of
 them. `index.js` is the only service file that knows about its own media
-types; everything else is shared.
+types; everything else is shared. The state machine auto-adapts to the
+output kind (`video` or `image` — sendVideo/sendPhoto), and fal submits work
+for any model via `submitRequest`.
 
-## Shipped services (the recipe applied three times)
+## What ships here
 
-| Service | Trigger | Provider | Cost | Output |
-| --- | --- | --- | --- | --- |
-| `image_to_video` | photo (no caption) | fal_ai or comfyui | 100 ⭐ | video |
-| `photo_restyle` | photo captioned `/restyle` | comfyui | 75 ⭐ | image |
-| `text_to_image` | `/imagine <prompt>` | fal_ai | 50 ⭐ | image |
-
-Each one is also a worked example of a different shape: file upload vs.
-pure-text input, video vs. image output, fal vs. ComfyUI provider.
+| Folder | What it is |
+| --- | --- |
+| `image_to_video/` | The **worked example**: photo → video, 100 ⭐, fal_ai or comfyui. Copy me. |
 
 *Why `lib/services/` and not a root `services/` folder?* The platform deploys
 only `schema.js`, `lib/**`, and `handlers/*.js`, and resolves imports by bare

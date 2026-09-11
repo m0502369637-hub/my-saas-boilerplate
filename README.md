@@ -63,9 +63,7 @@ my-saas-boilerplate/
 │   ├── http.js               # fetch + retry-once (no timers — undocumented)
 │   ├── telegram.js, auth.js, ids.js, idempotency.js, app_state.js, db_util.js
 │   └── services/             # ★ the SaaS layer — one folder per business module
-│       ├── image_to_video/   # worked example: photo → video (Fal + ComfyUI)
-│       ├── text_to_image/    # /imagine → image (Fal FLUX.1 [pro] ultra)
-│       └── photo_restyle/    # photo captioned /restyle → stylised image (ComfyUI)
+│       └── image_to_video/   # the worked example (photo → video, Fal + ComfyUI)
 ├── services/                 # the drop-in recipe (pointer; code lives in lib/services/)
 ├── relay/                    # OPTIONAL webhook watcher (user-hosted Node, zero deps)
 ├── .env.example              # relay env + reference map to lib/secrets.js
@@ -123,20 +121,33 @@ npx tgcloud push
 
 Payments, the job queue, polling, timeouts, refunds, the sweep, the relay
 handoff, and the audit trail are all generic `lib/` code — the new service
-inherits them automatically. Full 20-line recipe: [`services/README.md`](services/README.md).
+inherits them automatically. Full recipe: [`services/README.md`](services/README.md).
 
-### The three shipped services (the recipe applied three times)
+### One worked example — one repo per service
 
-| Service | Trigger | Provider | Cost | Output | What it exercises |
-| --- | --- | --- | --- | --- | --- |
-| `image_to_video` | photo (no caption) | fal_ai **or** comfyui | 100 ⭐ | video | photo upload → provider; video delivery |
-| `photo_restyle` | photo captioned `/restyle` | comfyui | 75 ⭐ | image | ComfyUI img2img; image delivery (`SaveImage`) |
-| `text_to_image` | `/imagine <prompt>` | fal_ai | 50 ⭐ | image | pure-text input (no file upload); FLUX.1 [pro] ultra |
+This repo is the **base code**, not a service catalog. It ships exactly one
+worked service, `image_to_video` (photo → video, Fal AI or ComfyUI,
+100 ⭐), plus the recipe. Each real SaaS becomes **its own repository**:
 
-Together they prove the two things that matter: a new service needs **zero
-changes to `lib/` plumbing**, and the state machine auto-adapts to the
-output kind (video or image) — `completeJob` delivers whichever the
-provider produced.
+```bash
+# 1. Clone the base into a fresh repo for the new service.
+git clone https://github.com/m0502369637-hub/my-saas-boilerplate my-new-saas
+cd my-new-saas
+
+# 2. Follow services/README.md: copy lib/services/image_to_video/ →
+#    lib/services/<your_name>/, edit config.js, register, wire one route.
+#    Delete lib/services/image_to_video/ when you don't need the example.
+
+# 3. Point the clone at the new service's repo and ship it.
+git remote set-url origin https://github.com/<you>/my-new-saas.git
+git push -u origin main
+```
+
+The plumbing generalises cleanly: the job state machine auto-adapts to the
+output kind (video **or** image), fal submits work for any model
+(`submitRequest`), invoice payloads are amount-agnostic, and providers are
+per-service config. Two services built this way exist in the same GitHub
+account as living proof of the workflow — see the repo list.
 
 ## 5. The async-job mental model
 
@@ -329,5 +340,5 @@ npx tgcloud webhook                        # handlers in sync?
 | DB | `schema.js` — `users`, `jobs`, `payments`, `job_events`, `processed_updates`, `app_state` |
 | Handlers | `handlers/message.js`, `handlers/callback_query.js`, `handlers/pre_checkout_query.js` |
 | Lib | `lib/{secrets,jobs,sweep,stars,fal_ai,comfyui,http,telegram,auth,ids,idempotency,app_state,db_util}.js` |
-| Services | `lib/services/registry.js` + `lib/services/{image_to_video,text_to_image,photo_restyle}/` (each: `index.js`, `config.js`, workflow template) |
+| Services | `lib/services/registry.js` + `lib/services/image_to_video/` (the worked example: `index.js`, `config.js`, workflow templates) |
 | Docs/ops | `README.md`, `AGENTS.md`, `services/README.md`, `handlers/README.md`, `lib/README.md`, `relay/` |
