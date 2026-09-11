@@ -1,130 +1,108 @@
 # AGENTS.md
 
-Orientation and **hard constraints** for AI coding agents (and humans)
-working in this repository. Auto-loaded by Claude Code, Cursor, and similar
-tools. The platform reference is
-https://core.telegram.org/bots/serverless — when in doubt, it wins over any
-assumption in this file.
+Orientation and **hard constraints** for AI coding agents (and humans) working
+in this repository. Auto-loaded by Claude Code, Cursor, and similar tools.
+The platform reference is https://docs.convex.dev — when in doubt, it wins
+over any assumption in this file.
 
 ## What this project is
 
-A monetised SaaS bot boilerplate on **Telegram Serverless**: JavaScript
-modules (`schema.js`, `lib/**`, `handlers/*.js`) deployed with `npx tgcloud
-push` and run by Telegram in short-lived V8 isolates. There is no server, no
-`node_modules` at runtime, no filesystem, no Node builtins. The worked
-service: photo → AI video (Fal AI or ComfyUI), 100 Telegram Stars per
-generation, with a fully async, refund-safe job queue.
+A monetised Telegram SaaS bot on **Convex**: classic Bot API webhook →
+Convex HTTP action → Convex DB / scheduled functions / cron → provider
+(fal.ai or ComfyUI) → media back to the user. One worked-example service
+(`lib/services/image_to_video`), 100 ⭐ per generation, fully async
+refund-safe job queue. This repo is the **base template**: each real SaaS is
+cloned into its own repository (see `services/README.md`).
 
-## Layout — what is deployed
+## Layout
 
-| Path | Deployed? | Role |
-| --- | --- | --- |
-| `schema.js` | ✅ | All database tables, as named exports. |
-| `lib/**` | ✅ (nestable) | Shared modules. **All business modules live in `lib/services/<name>/`.** |
-| `handlers/*.js` | ✅ (flat only) | One file per Telegram update type. Names are a closed set (`message`, `callback_query`, `pre_checkout_query`, … — run `npx tgcloud add handlers` to list them). |
-| everything else | ❌ | Markdown, `.env.example`, `relay/`, `services/` (the recipe), `package.json` — local only. |
+| Path | Role |
+| --- | --- |
+| `convex/**` | Deployed Convex code (queries, mutations, actions, http, crons, schema). |
+| `convex/lib/services/<name>/` | One service per folder: `config.ts`, `fal_workflow.ts` / `comfy_workflow.ts`, `index.ts`. Pure modules. |
+| `convex/_generated/` | Generated types — **committed** (code won't typecheck without it). Regenerate with `npx convex codegen --system-udfs --init` after schema/env changes; `npx convex dev`/`deploy` regenerate too. |
+| `scripts/*.ts` | Local-only tooling: `dev-poll.ts` (long polling in dev), `set-webhook.ts`. |
+| everything else | Docs, `package.json`, `.env.example`. |
 
-## Rules that bite — violations fail at deploy or at runtime
+## Rules that bite
 
-1. **Import by bare module name only.** `'sdk'`, `'sdk/db'`, `'schema'`,
-   `'lib/…'` (path without `.js`). Relative paths, extensions, and npm
-   packages do not compile. No `require()`.
-2. **No foreign keys.** `.references()` / `foreignKey()` throw at
-   declaration. Model relations with plain columns + indexes; enforce
-   integrity in code.
-3. **No environment access.** No `process.env`, no `.env`, no secrets store.
-   Provider credentials live in `lib/secrets.js` (deployed) or behind a
-   proxy the user hosts. Never invent a `tgcloud secrets` command.
-4. **No timers, no filesystem, no `Buffer`.** `setTimeout`/`setInterval` are
-   undocumented in the isolate — don't rely on them. Use `Uint8Array`,
-   `TextEncoder`, `TextDecoder`. Outbound HTTP goes through `sdk`'s `fetch`
-   (wrapped by `lib/http.js`).
-5. **Every `db` call is async — always `await`.** Raw rows are unconverted
-   (booleans 0/1, JSON strings, timestamps numeric); the table-bound builder
-   converts.
-6. **Handlers stay thin and fast.** Bound every handler's work (the sweep's
-   budget is ~20 s; keep handlers well under 25 s of awaits). Answer
-   `callback_query` first; tolerate benign 400s via `lib/telegram.js#safe`.
-7. **Deduplicate money-moving handlers on `update_id`** — delivery is
-   at-least-once. Wrap with `withUpdateClaim` from `lib/idempotency.js`.
-
-## Do not block inside handlers waiting for AI jobs — ever
-
-A generation takes 30 s → 10+ min; a handler invocation is short-lived.
-The only legal pattern, already built into this repo:
-
-1. Handler validates + debits + submits + replies with a status keyboard —
-   then **returns**.
-2. Completion arrives through one of: the 🔄 Check Status button
-   (`handlers/callback_query.js` → `lib/jobs.js#pollJob`), the piggyback
-   sweep (`lib/sweep.js`, since the platform has **no cron**), or the
-   optional user-hosted relay (`relay/` → nudge → user taps 🔄; the platform
-   has **no inbound HTTP**, so a `handlers/webhook.js` cannot exist).
-
-When writing a new SaaS module: never `await` a provider result inside a
-handler. Submit and return.
-
-## The job state machine is owned by `lib/jobs.js` — exclusively
-
-Statuses: `queued → submitted → processing → complete | failed | timed_out`.
-
-- **Do not** write `jobs.status` anywhere outside `lib/jobs.js`.
-- **Do** route every transition through `createJob`, `submitToProvider`,
-  `pollJob`, `completeJob`, `failJob`, `timeoutJob`, `cancelJob`, `refund`.
-- **Do** refund Stars on every `failed` / `timed_out` / cancelled path
-  (handled inside `lib/jobs.js` — do not reimplement it).
-- **Do** keep terminal transitions as conditional UPDATEs on the current
-  status (the existing guards prevent double-refund/double-delivery; do not
-  weaken them).
-- **Do** append a `job_events` row for every transition (`addEvent`).
+1. **Mutations and queries are deterministic.** No `fetch`, no external calls,
+   no non-seeded randomness, `Date.now()` is frozen per execution (still fine
+   for timestamps/guards). All external I/O lives in **actions**.
+2. **Actions run in the default web-standards runtime** (fetch, Blob,
+   FormData, TextEncoder, Uint8Array — all fine). If you ever need Node
+   builtins (`Buffer`, `node:*`, npm Node-only libs), that file must start
+   with `"use node"`, may contain **only actions**, and may only be imported
+   by other actions.
+3. **`env` only, never `process.env` for your own vars.** Env vars are
+   declared in `convex/convex.config.ts` and read via the typed `env` import
+   from `_generated/server`. (`process.env.CONVEX_SITE_URL` is the one
+   system-var exception, used for the fal webhook URL.)
+4. **No foreign keys, no SQL.** Relations are plain fields + indexes; integrity
+   is enforced in code. Mutations are serializable transactions — a
+   read-check-write inside one mutation is race-free. Never read-modify-write
+   a balance across awaits (each mutation is atomic; actions must call
+   mutations for every state change).
+5. **The job state machine is owned by `jobs.ts` — exclusively.**
+   Statuses: `queued → submitted → processing → complete | failed |
+   timed_out | cancelled`. Do not write `jobs.status` anywhere else. Route
+   every transition through `createJob`, `markSubmitted`, `markPolled`,
+   `beginDelivery`, `completeJob`, `failJob`, `timeoutJob`, `cancelJob`.
+   Every failed/timed_out/cancelled path refunds inside the same transaction
+   that flips the status.
+6. **Do not block inside update handling.** `updates.processUpdate` may
+   await the submit (a few fast HTTP calls) but NEVER generation output.
+   Completion arrives via the scheduler chain (`markSubmitted` schedules the
+   first `pollJob` atomically), the `/fal/webhook` accelerator, the 🔄 button,
+   or the cron sweep.
+7. **Idempotency on `update_id`.** Webhook delivery is at-least-once; claim
+   each update in `processed_updates` (done in `processUpdate`) before any
+   side effect.
+8. **Money rules.** Stars invoices: currency `XTR`, no `provider_token`,
+   payload `buy_stars`; `pre_checkout_query` must be answered ok. Credit from
+   Telegram's `total_amount`, never from a payload. Debit only inside
+   `createJob` (atomic balance gate). Every wallet movement writes a
+   `payments` row.
+9. **Callback payloads** are `check:<jobId>` / `cancel:<jobId>` /
+   `buy:<amount>` — keep them under 64 bytes.
 
 ## Adding a new SaaS service — in its OWN repository
 
-The base repo ships exactly one worked example (`lib/services/image_to_video/`)
-and must stay clean of service accumulation. A new SaaS is a new repository:
+The base repo ships exactly one worked example and must stay clean. A new
+SaaS is a new repository:
 
-1. `git clone` the base repo into the new service's repo.
-2. Copy `lib/services/image_to_video/` → `lib/services/<name>/`.
-3. Edit its `config.js` (`name`, `cost`, `provider`, `maxJobAgeMs`,
-   `pollAfterMs`, prompts/workflow).
-4. Rewrite `index.js`'s dispatch (input handling + provider submit) — it
-   must never await generation output.
-5. Register in `lib/services/registry.js` (drop the example entry if unused).
-6. Route in `handlers/message.js`.
-7. Push to the new repo; `npx tgcloud push` — no schema change needed
-   (jobs/payments are generic).
+1. `git clone` this repo into the new service's repo (keep `upstream` pointing
+   here to pull plumbing updates later).
+2. Copy `convex/lib/services/image_to_video/` → `convex/lib/services/<name>/`.
+3. Edit `config.ts` (name, title, cost, provider, `pollAfterMs`,
+   `maxJobAgeMs`, trigger) and the workflow files.
+4. Rewrite `index.ts`'s `buildProviderPayload` (pure — no network, no DB).
+5. Register in `convex/lib/services/registry.ts` (drop the example entry).
+6. Route the trigger in `convex/updates.ts`.
+7. Deploy: `npx convex dev` (link project) → `npx convex env set …` →
+   `npm run deploy` → `npm run webhook:set`.
 
 Full recipe: `services/README.md`. Never add a second service folder to the
-base repo — that belongs in its own clone.
+base repo.
 
-## Deploy & migrate — two separate steps
+## Deploy & verify
 
 ```
-npx tgcloud status      # offline diff
-npx tgcloud push        # deploy code (never touches the database)
-npx tgcloud migrate     # apply schema.js changes (safe = additive, reviewed)
-npx tgcloud webhook     # confirm allowed_updates matches handlers/
-npx tgcloud run handlers/message '<json5 payload>' --ctx '{ update: { update_id: 1 } }'
+npm run typecheck        # tsc on convex/ + scripts/
+npx convex codegen --system-udfs --init   # regenerate committed types after schema/env edits
+npx convex deploy        # deploy code + schema + cron
+npx convex env set NAME value   # prod env vars (dev reads .env.local)
+WEBHOOK_URL=… npm run webhook:set   # point Telegram at the deployed /telegram route
 ```
 
-- `run` executes **on the platform with the real database and Bot API** —
-  use test chat ids, never destructive payloads.
-- Never use `push --force`, `migrate --yes`, or `webhook sync
-  --drop-pending` as routine fixes; each discards something.
-- Deploying never migrates; deleting a declaration never drops (use
-  `.deprecated('reason')`).
-
-## Money rules
-
-- Balance mutations are conditional SQL updates — keep them atomic
-  (`lib/stars.js`). Never read-modify-write a balance across awaits.
-- A generation debits at job start and refunds on failure/timeout/cancel;
-  every movement writes a `payments` row (`kind: 'charge' | 'refund'`).
-- Stars invoices: currency `XTR`, no `provider_token`; `pre_checkout_query`
-  must be answered (see `handlers/pre_checkout_query.js`).
+- `convex deploy` pushes schema + functions + cron in one go; check the
+  dashboard Logs after deploy.
+- `npm run webhook:set -- --delete` switches back to long-polling mode.
+- In dev, `npx convex dev` serves HTTP actions at
+  `http://127.0.0.1:3210`; `npm run dev:poll` forwards Telegram updates there.
 
 ## Allowed imports
 
-`'sdk'`, `'sdk/db'` (also `'sdk/api'`, `'sdk/fetch'`), `'schema'`,
-`'lib/*'`, `'handlers/*'` (for types only — handlers are entry points).
-Nothing else exists at runtime.
+`convex/*` (functions, values, server), `./_generated/*`, `./lib/*`,
+`./schema` (types). Node-only imports only in `"use node"` action files.
+Never import files across the runtime boundary (default ↔ node).

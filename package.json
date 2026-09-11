@@ -1,19 +1,26 @@
 {
   "name": "my-saas-boilerplate",
-  "version": "0.1.0",
   "private": true,
+  "version": "1.0.0",
+  "description": "Convex backend template for monetised Telegram SaaS bots: one service per repo, Stars payments, async job queue.",
   "type": "module",
-  "description": "Production-ready Telegram Serverless SaaS boilerplate: Stars payments, async AI job queue (Fal AI / ComfyUI), timeout-resilient generation services.",
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
-    "deploy": "tgcloud push",
-    "status": "tgcloud status",
-    "diff": "tgcloud diff",
-    "migrate": "tgcloud migrate",
-    "run": "tgcloud run",
-    "webhook": "tgcloud webhook",
-    "relay": "node relay/relay.mjs"
+    "dev": "convex dev",
+    "dev:poll": "tsx scripts/dev-poll.ts",
+    "deploy": "convex deploy",
+    "webhook:set": "tsx scripts/set-webhook.ts",
+    "codegen": "convex codegen",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p convex/tsconfig.json"
+  },
+  "dependencies": {
+    "convex": "^1.45.0"
   },
   "devDependencies": {
-    "@tgcloud/cli": "^0.1.2"
+    "@types/node": "^22.0.0",
+    "tsx": "^4.23.13",
+    "typescript": "^5.9.3"
   }
 }
