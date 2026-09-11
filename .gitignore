@@ -1,0 +1,12 @@
+# tgcloud CLI state — credentials and the deployed-code snapshot live here. Never commit.
+.tgcloud/
+
+# Local CLI install
+node_modules/
+
+# Optional relay env file (relay/relay.mjs reads process.env; use this only locally)
+relay/.env
+
+# NOTE: lib/secrets.js is intentionally NOT ignored. It ships with empty
+# placeholder values so a fresh clone still deploys. Fill it in on a trusted
+# machine and keep real values out of git.
