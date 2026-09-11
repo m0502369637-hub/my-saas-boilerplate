@@ -146,8 +146,11 @@ git push -u origin main
 The plumbing generalises cleanly: the job state machine auto-adapts to the
 output kind (video **or** image), fal submits work for any model
 (`submitRequest`), invoice payloads are amount-agnostic, and providers are
-per-service config. Two services built this way exist in the same GitHub
-account as living proof of the workflow — see the repo list.
+per-service config. Two services built exactly this way are live in the same
+GitHub account:
+
+- [text-to-image-saas](https://github.com/m0502369637-hub/text-to-image-saas) — `/imagine <prompt>` → image, Fal FLUX.1 [pro] ultra, 50 ⭐
+- [photo-restyle-saas](https://github.com/m0502369637-hub/photo-restyle-saas) — photo → restyled image, ComfyUI img2img, 75 ⭐
 
 ## 5. The async-job mental model
 
