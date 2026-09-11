@@ -5,7 +5,7 @@
 // actually issues — everything else gets an explicit refusal.
 import { api } from 'sdk';
 
-const KNOWN_PAYLOADS = new Set(['buy_100_stars']);
+const KNOWN_PAYLOADS = new Set(['buy_stars']); // lib/stars.js INVOICE_PAYLOAD
 
 export default async function (pq) {
   const ok = KNOWN_PAYLOADS.has(pq.invoice_payload ?? '');

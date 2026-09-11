@@ -8,7 +8,7 @@
 import { api } from 'sdk';
 import { withUpdateClaim } from 'lib/idempotency';
 import { safe } from 'lib/telegram';
-import { createStarsInvoice } from 'lib/stars';
+import { createStarsInvoice, INVOICE_PAYLOAD } from 'lib/stars';
 import {
   getJob,
   pollJob,
@@ -36,8 +36,8 @@ export default async function (cq, ctx) {
         await createStarsInvoice(
           chatId,
           100,
-          'Top up 100 ⭐ for one image→video generation.',
-          'buy_100_stars',
+          'Top up 100 ⭐ for image→video generations.',
+          INVOICE_PAYLOAD,
         );
         break;
       case 'check':

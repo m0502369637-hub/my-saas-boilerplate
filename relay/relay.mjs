@@ -48,11 +48,12 @@ async function bot(method, params) {
   return res.ok;
 }
 
-// The nudge is a pointer, not the video: the bot is the only party allowed to
-// mark a job complete (and it refunds/delivers accordingly).
+// The nudge is a pointer, not the result: the bot is the only party allowed to
+// mark a job complete (and it refunds/delivers accordingly). Wording is
+// media-agnostic because services may produce videos OR images.
 function nudge(jobId, chatId, ok, detail) {
   const text = ok
-    ? `✅ Your video is ready!\nTap 🔄 <b>Check Status</b> under your job to receive it.\n<code>${jobId}</code>`
+    ? `✅ Your generation is ready!\nTap 🔄 <b>Check Status</b> under your job to receive it.\n<code>${jobId}</code>`
     : `❌ Generation failed: ${String(detail ?? 'provider error').slice(0, 200)}\nThe bot refunds your Stars automatically.`;
   return bot('sendMessage', { chat_id: chatId, text, parse_mode: 'HTML' });
 }
