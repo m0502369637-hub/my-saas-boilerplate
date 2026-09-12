@@ -1,46 +1,27 @@
 import { v } from "convex/values";
 import { internalAction } from "./_generated/server";
-import { env } from "./_generated/server";
 import { internal } from "./_generated/api";
 import type { JobRow } from "./queries";
 import { getService } from "./lib/services/registry";
+import { getProvider } from "./lib/providers/registry";
+import type { ImageRefs, JobInput } from "./lib/services/types";
 import { TERMINAL_STATUSES, renderStatusText } from "./lib/format";
 import * as telegram from "./lib/telegram";
-import * as fal from "./lib/providers/fal";
-import * as comfy from "./lib/providers/comfyui";
-import type { ImageRefs, JobInput } from "./lib/services/types";
 
 // jobs_actions.ts — every bit of external I/O the job machine needs.
 //
 // Mutations in jobs.ts own state; these actions own the outside world:
-// provider submit/poll/cancel and Telegram sends. Actions are NOT retried by
-// Convex, so each one is built to be safe to run more than once (guarded by
-// the conditional mutations) and to reschedule itself when it must live on.
+// provider submit/poll/cancel and Telegram sends. Providers are RESOLVED AT
+// RUNTIME from lib/providers/registry.ts — this file knows nothing about any
+// specific provider. Actions are NOT retried by Convex, so each one is safe
+// to run more than once (guarded by the conditional mutations) and
+// reschedules itself when it must live on.
 
 function errMsg(e: unknown): string {
   return e instanceof Error ? e.message : String(e);
 }
 
-/**
- * The provider submission payload, supplied at deploy time (PROVIDER_PAYLOAD
- * env var). The repo carries no sample workflows — this is the single source
- * of the fal model/input template or the ComfyUI workflow graph.
- */
-function providerPayload(): Record<string, unknown> {
-  const raw = env.PROVIDER_PAYLOAD;
-  if (!raw) throw new Error("PROVIDER_PAYLOAD env var is not set (npx convex env set PROVIDER_PAYLOAD '…')");
-  try {
-    const parsed = JSON.parse(raw);
-    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
-      throw new Error("not a JSON object");
-    }
-    return parsed as Record<string, unknown>;
-  } catch (e) {
-    throw new Error(`PROVIDER_PAYLOAD is not valid JSON: ${errMsg(e)}`);
-  }
-}
-
-async function notify(ctx: { runQuery: Function }, chatId: number, text: string): Promise<void> {
+async function notify(chatId: number, text: string): Promise<void> {
   try {
     await telegram.sendMessage(chatId, text, { parseMode: "HTML" });
   } catch (e) {
@@ -75,24 +56,17 @@ async function failAndNotify(
 ): Promise<void> {
   await ctx.runMutation(internal.jobs.failJob, { jobId: job._id, error: reason });
   const fresh = await ctx.runQuery(internal.queries.getJob, { jobId: job._id });
-  await notify(ctx, job.telegramId, `❌ Generation failed: ${reason}\nYour ${job.cost} ⭐ have been refunded.`);
+  await notify(job.telegramId, `❌ Generation failed: ${reason}\nYour ${job.cost} ⭐ have been refunded.`);
   if (fresh) await editStatus(chatId, messageId, fresh);
-}
-
-/** Build the fal webhook URL only in prod (CONVEX_SITE_URL is unset in dev → polling only). */
-function falWebhookUrl(job: JobRow): string | null {
-  const site = process.env.CONVEX_SITE_URL;
-  if (!site) return null;
-  return `${site}/fal/webhook?jobId=${encodeURIComponent(job._id)}`;
 }
 
 // --- submit -----------------------------------------------------------------------
 
 /**
- * queued job → provider. Resolves the user's photo to provider-side bytes,
- * builds the service payload, submits, and flips the job to submitted via
- * markSubmitted (which also schedules the first poll). Fast: a few HTTP
- * calls, never waits for generation output.
+ * queued job → provider. Resolves the user's photos through the provider
+ * (provider-side upload), builds the service payload, submits, and flips the
+ * job to submitted via markSubmitted (which also schedules the first poll).
+ * Fast: a few HTTP calls, never waits for generation output.
  */
 export const submitJob = internalAction({
   args: { jobId: v.id("jobs") },
@@ -104,49 +78,25 @@ export const submitJob = internalAction({
       await failAndNotify(ctx, job, `Unknown service ${job.service}`);
       return { status: "failed", error: `Unknown service ${job.service}` };
     }
+    const provider = getProvider(job.provider);
+    if (!provider) {
+      await failAndNotify(ctx, job, `Provider "${job.provider}" is not registered in lib/providers/registry.ts`);
+      return { status: "failed", error: `Unknown provider ${job.provider}` };
+    }
 
     try {
       const input = (job.input ?? {}) as JobInput;
-      const images: ImageRefs = {};
       const photoIds = input.photoFileIds ?? (input.photoFileId ? [input.photoFileId] : []);
-      if (photoIds.length > 0) {
-        if (job.provider === "comfyui") {
-          // ComfyUI LoadImage takes one file; multi-photo services use the first.
-          const bytes = await telegram.downloadPhoto(photoIds[0]);
-          const up = await comfy.uploadImage(bytes, "photo.jpg");
-          images.comfyName = up.name;
-        } else {
-          const urls: string[] = [];
-          for (const id of photoIds.slice(0, 10)) {
-            const bytes = await telegram.downloadPhoto(id);
-            urls.push(await fal.uploadImage(bytes, "photo.jpg"));
-          }
-          images.falUrls = urls;
-          images.falUrl = urls[0];
-        }
-      }
+      const images: ImageRefs = await provider.resolveImages(photoIds.slice(0, 10));
 
-      const payload = svc.buildProviderPayload(providerPayload(), input, images);
-      if (payload.kind === "fal") {
-        const res = await fal.submitRequest({
-          model: payload.model,
-          input: payload.input,
-          webhookUrl: falWebhookUrl(job),
-        });
-        await ctx.runMutation(internal.jobs.markSubmitted, {
-          jobId: job._id,
-          providerJobId: res.requestId,
-          providerStatusUrl: res.statusUrl,
-          providerCancelUrl: res.cancelUrl ?? undefined,
-        });
-      } else {
-        const res = await comfy.submitWorkflow(payload.workflow, `bot-${job._id}`);
-        await ctx.runMutation(internal.jobs.markSubmitted, {
-          jobId: job._id,
-          providerJobId: res.promptId,
-          providerStatusUrl: `${comfy.baseUrl()}/history/${res.promptId}`,
-        });
-      }
+      const payload = svc.buildProviderPayload(input, images);
+      const res = await provider.submit(job, payload);
+      await ctx.runMutation(internal.jobs.markSubmitted, {
+        jobId: job._id,
+        providerJobId: res.providerJobId,
+        providerStatusUrl: res.providerStatusUrl,
+        providerCancelUrl: res.providerCancelUrl,
+      });
       return { status: "submitted" };
     } catch (e) {
       await failAndNotify(ctx, job, errMsg(e));
@@ -176,10 +126,12 @@ async function settleAndDeliver(
   const chat = job.telegramId;
   const svc = getService(job.service);
   const caption = svc?.config.title ?? job.service;
+  const provider = getProvider(job.provider);
 
   try {
     if (output.requiresDownload) {
-      const bytes = await comfy.downloadOutput(output.url);
+      if (!provider?.downloadOutput) throw new Error(`Provider "${job.provider}" has no downloadOutput support`);
+      const bytes = await provider.downloadOutput(output.url);
       if (output.kind === "image") {
         await telegram.sendPhotoBytes(chat, bytes, caption);
       } else {
@@ -200,7 +152,7 @@ async function settleAndDeliver(
       error: `Result delivery failed: ${errMsg(e)}`,
     });
     const fresh = await ctx.runQuery(internal.queries.getJob, { jobId: job._id });
-    await notify(ctx, chat, `❌ Delivery failed: ${errMsg(e)}\nYour ${job.cost} ⭐ have been refunded.`);
+    await notify(chat, `❌ Delivery failed: ${errMsg(e)}\nYour ${job.cost} ⭐ have been refunded.`);
     if (fresh) await editStatus(chatId, messageId, fresh);
   }
 }
@@ -227,15 +179,14 @@ export const pollJob = internalAction({
 
     await ctx.runMutation(internal.jobs.markPolled, { jobId: job._id });
     const fresh = (await ctx.runQuery(internal.queries.getJob, { jobId: job._id })) ?? job;
+    const provider = getProvider(fresh.provider);
+    if (!provider) {
+      await failAndNotify(ctx, fresh, `Provider "${fresh.provider}" is not registered`, args.chatId, args.messageId);
+      return;
+    }
 
     try {
-      const result =
-        fresh.provider === "comfyui"
-          ? await comfy.getJobStatus(fresh.providerJobId ?? "")
-          : await fal.getJobStatus({
-              statusUrl: fresh.providerStatusUrl ?? "",
-              responseUrl: fresh.providerCancelUrl?.replace(/\/cancel$/, "/response") ?? null,
-            });
+      const result = await provider.getJobStatus(fresh);
 
       if (result.status === "complete") {
         if (result.failed) {
@@ -250,7 +201,6 @@ export const pollJob = internalAction({
       if (Date.now() - fresh.createdAt > fresh.maxJobAgeMs) {
         await ctx.runMutation(internal.jobs.timeoutJob, { jobId: fresh._id });
         await notify(
-          ctx,
           fresh.telegramId,
           `⚠️ Your generation took too long and was cancelled. Your ${fresh.cost} ⭐ have been refunded.`,
         );
@@ -282,12 +232,10 @@ export const cancelProviderJob = internalAction({
   handler: async (ctx, args): Promise<void> => {
     const job = await ctx.runQuery(internal.queries.getJob, { jobId: args.jobId });
     if (!job) return;
+    const provider = getProvider(job.provider);
+    if (!provider) return;
     try {
-      if (job.provider === "comfyui") {
-        await comfy.cancel(job.providerJobId ?? "");
-      } else {
-        await fal.cancelRequest(job.providerCancelUrl ?? null);
-      }
+      await provider.cancel(job);
     } catch (e) {
       console.warn("provider cancel failed (already refunded)", { jobId: job._id, reason: errMsg(e) });
     }
@@ -314,7 +262,6 @@ export const sweep = internalAction({
         await ctx.runMutation(internal.jobs.timeoutJob, { jobId: job._id });
         timedOut++;
         await notify(
-          ctx,
           job.telegramId,
           `⚠️ Your generation took too long and was cancelled. Your ${job.cost} ⭐ have been refunded.`,
         );

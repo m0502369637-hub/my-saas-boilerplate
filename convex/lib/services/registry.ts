@@ -1,15 +1,16 @@
 import type { Service } from "./types";
-import { imageToVideo } from "./image_to_video/index";
 
 // lib/services/registry.ts — the ONE list of services this bot offers.
 //
-// This repo ships exactly one worked example (image_to_video). Each real SaaS
-// clones this repo into its own and keeps a single entry here (see
-// services/README.md). Never accumulate services in the base repo.
+// DELIBERATELY EMPTY in the base repo: this boilerplate ships no services.
+// Each SaaS repo adds its own service folder and registers it here, e.g.:
+//
+//   import { myService } from "./my_service/index";
+//   export const SERVICES: Record<string, Service> = { my_service: myService };
+//
+// The base repo must stay free of service accumulation — see services/README.md.
 
-export const SERVICES: Record<string, Service> = {
-  image_to_video: imageToVideo,
-};
+export const SERVICES: Record<string, Service> = {};
 
 export function getService(name: string): Service | null {
   return SERVICES[name] ?? null;

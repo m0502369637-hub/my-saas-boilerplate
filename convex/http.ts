@@ -5,12 +5,14 @@ import { env } from "./_generated/server";
 
 // convex/http.ts — public endpoints, served at https://<deployment>.convex.site
 //
-//   POST /telegram        — the bot's webhook (setWebhook → …/telegram)
-//   POST /fal/webhook     — fal queue completion webhook (optional accelerator)
-//   GET  /healthz         — liveness probe
+//   POST /telegram  — the bot's webhook (setWebhook → …/telegram)
+//   GET  /healthz   — liveness probe
 //
 // The webhook is protected by setWebhook's secret_token: Telegram sends it as
 // the X-Telegram-Bot-Api-Secret-Token header on every delivery.
+//
+// Providers that support webhook callbacks can add their own route here in
+// the SaaS repo (keep the pattern: verify → runMutation → immediate poll).
 
 const http = httpRouter();
 
@@ -32,19 +34,6 @@ http.route({
     // action runtime (it needs fetch for Telegram API calls).
     const result = await ctx.runAction(internal.updates.processUpdate, { update });
     return new Response("ok", { status: result.processed ? 200 : 500 });
-  }),
-});
-
-http.route({
-  path: "/fal/webhook",
-  method: "POST",
-  handler: httpAction(async (ctx, request) => {
-    const jobId = new URL(request.url).searchParams.get("jobId");
-    if (!jobId) return new Response("missing jobId", { status: 400 });
-    // The webhook only triggers an immediate poll — the poll re-verifies with
-    // fal before any money or delivery moves, so a spoofed call is harmless.
-    await ctx.runMutation(internal.jobs.handleFalWebhook, { jobId: jobId as any });
-    return new Response("ok", { status: 200 });
   }),
 });
 

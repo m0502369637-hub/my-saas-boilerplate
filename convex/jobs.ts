@@ -248,18 +248,3 @@ export const cancelJob = internalMutation({
     return { ok: true as const, refunded: job.cost };
   },
 });
-
-/**
- * fal webhook acceleration: someone (fal, or anything) says a job finished —
- * the safe reaction is an immediate poll, which re-checks with the provider
- * before touching money. Spoofing this only costs one extra poll.
- */
-export const handleFalWebhook = internalMutation({
-  args: { jobId: v.id("jobs") },
-  handler: async (ctx, args) => {
-    const job = await ctx.db.get(args.jobId);
-    if (!job || isTerminal(job.status) || job.provider !== "fal") return { ok: false };
-    await ctx.scheduler.runAfter(0, internal.jobs_actions.pollJob, { jobId: args.jobId });
-    return { ok: true };
-  },
-});

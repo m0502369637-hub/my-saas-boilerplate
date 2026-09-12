@@ -97,7 +97,10 @@ async function handleMessage(ctx: Ctx, message: Record<string, any>): Promise<vo
   // ONE job gets every photo; a single photo starts immediately.
   if (Array.isArray(message.photo) && message.photo.length > 0) {
     const svc = photoService();
-    if (!svc) return;
+    if (!svc) {
+      await telegram.sendMessage(chatId, "🤖 No service is configured in this bot yet.");
+      return;
+    }
     const fileId = message.photo[message.photo.length - 1].file_id as string;
     const caption = typeof message.caption === "string" && message.caption.trim()
       ? message.caption.trim()
@@ -366,6 +369,7 @@ function helpText(): string {
   if (prompt && prompt.config.trigger.kind === "prompt") {
     lines.push(`Send ${prompt.config.trigger.command} &lt;prompt&gt; — ${prompt.config.description}`);
   }
+  if (!photo && !prompt) lines.push("No service is configured in this bot yet.");
   try {
     lines.push("", `💰 <b>${serviceCost()} ⭐</b> per generation`);
   } catch {

@@ -30,7 +30,7 @@ export default defineSchema({
   jobs: defineTable({
     telegramId: v.number(),
     service: v.string(), // registry key, e.g. "image_to_video"
-    provider: v.union(v.literal("fal"), v.literal("comfyui")),
+    provider: v.string(), // registry key of the Provider adapter (repo-defined)
     status: v.union(...JOB_STATUSES.map((s) => v.literal(s))),
     cost: v.number(), // Stars charged at creation
     input: v.optional(v.any()), // service-specific: { prompt? }, { photoFileId? }

@@ -3,6 +3,9 @@
 // A service is PURE data + payload building: no database, no network, no
 // Convex context. The generic plumbing (jobs, wallet, delivery) knows only
 // these shapes, so a new service never touches the state machine.
+//
+// The BASE repo ships NO services and NO providers — this file is the
+// contract a SaaS repo fills in when it adds its own service.
 
 /** What the service extracts from the user's Telegram message. */
 export interface JobInput {
@@ -13,19 +16,14 @@ export interface JobInput {
 }
 
 /**
- * Provider-side image references, resolved by the plumbing at submit time:
- * fal → public CDN URL (after uploadImage), comfyui → server file name
- * (after /upload/image). Services consume whichever matches their provider.
+ * Provider-side image references, resolved by the Provider's resolveImages()
+ * at submit time (generic names — the provider decides their meaning).
  */
 export interface ImageRefs {
-  falUrl?: string; // single image (fal)
-  falUrls?: string[]; // album images (fal)
-  comfyName?: string; // single image (comfyui — multi-photo uses the first)
+  imageUrl?: string; // single image (URL)
+  imageUrls?: string[]; // album images (URLs)
+  imageName?: string; // single image (server-side name)
 }
-
-export type ProviderPayload =
-  | { kind: "fal"; model: string; input: Record<string, unknown> }
-  | { kind: "comfyui"; workflow: Record<string, unknown> };
 
 export interface ServiceConfig {
   /** Registry key — unique, snake_case, used in jobs.service. */
@@ -34,7 +32,8 @@ export interface ServiceConfig {
   title: string;
   /** One-liner for /help and /start (no price — that's the SERVICE_COST env var). */
   description: string;
-  provider: "fal" | "comfyui";
+  /** Must match the key of a registered Provider (lib/providers/registry.ts). */
+  provider: string;
   /** Poll the provider at most once per this many ms (scheduler chain). */
   pollAfterMs: number;
   /** Auto-timeout + refund once a job outlives this age. */
@@ -46,13 +45,9 @@ export interface ServiceConfig {
 export interface Service {
   config: ServiceConfig;
   /**
-   * Merge the env-provided payload (PROVIDER_PAYLOAD, parsed JSON) with the
-   * runtime inputs (user photo/prompt). The payload itself NEVER lives in
-   * this repo — no sample workflows, no model templates. Pure function.
+   * Build the provider submission payload from the runtime inputs (photo
+   * refs / prompt / caption). Pure function — no network, no DB. The return
+   * value is passed verbatim to Provider.submit().
    */
-  buildProviderPayload(
-    payload: Record<string, unknown>,
-    input: JobInput,
-    images: ImageRefs,
-  ): ProviderPayload;
+  buildProviderPayload(input: JobInput, images: ImageRefs): unknown;
 }
