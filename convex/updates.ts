@@ -55,6 +55,7 @@ type Ctx = {
   runMutation: Function;
   runQuery: Function;
   runAction: Function;
+  scheduler: { cancel: Function; runAfter: Function };
 };
 
 async function handleMessage(ctx: Ctx, message: Record<string, any>): Promise<void> {
@@ -91,11 +92,44 @@ async function handleMessage(ctx: Ctx, message: Record<string, any>): Promise<vo
   });
 
   // Photo → the photo-triggered service (largest size = last PhotoSize entry).
+  // Albums (media groups) arrive as separate updates: buffer + debounce so
+  // ONE job gets every photo; a single photo starts immediately.
   if (Array.isArray(message.photo) && message.photo.length > 0) {
     const svc = photoService();
     if (!svc) return;
     const fileId = message.photo[message.photo.length - 1].file_id as string;
-    await runJob(ctx, chatId, from.id, svc, { photoFileId: fileId });
+    const caption = typeof message.caption === "string" && message.caption.trim()
+      ? message.caption.trim()
+      : undefined;
+    const mediaGroupId = typeof message.media_group_id === "string" ? message.media_group_id : null;
+
+    if (mediaGroupId) {
+      const state = await ctx.runMutation(internal.updates_mutations.addAlbumPhoto, {
+        mediaGroupId,
+        fileId,
+        caption,
+        telegramId: from.id,
+        chatId,
+      });
+      // Debounce: every new album photo resets the 2s finalize timer.
+      if (state.scheduledId) {
+        try {
+          await ctx.scheduler.cancel(state.scheduledId as unknown as Id<"_scheduled_functions">);
+        } catch {
+          /* already ran — the next finalize will handle the rest */
+        }
+      }
+      const scheduledId = await ctx.scheduler.runAfter(2000, internal.updates.finalizeAlbum, {
+        mediaGroupId,
+      });
+      await ctx.runMutation(internal.updates_mutations.setAlbumScheduled, {
+        mediaGroupId,
+        scheduledId,
+      });
+      return;
+    }
+
+    await runJob(ctx, chatId, from.id, svc, { photoFileId: fileId, details: caption });
     return;
   }
 
@@ -203,6 +237,32 @@ async function runJob(
     replyMarkup: statusKeyboard(job._id),
   });
 }
+
+// --- album finalize -----------------------------------------------------------------
+
+/**
+ * Fired 2s after the last album photo arrived: start ONE job with every
+ * buffered photo (+ the album caption as `details`), then clear the buffer.
+ */
+export const finalizeAlbum = internalAction({
+  args: { mediaGroupId: v.string() },
+  handler: async (ctx, args): Promise<void> => {
+    const state = await ctx.runQuery(internal.updates_mutations.getAlbumState, {
+      mediaGroupId: args.mediaGroupId,
+    });
+    if (!state) return;
+    await ctx.runMutation(internal.updates_mutations.clearAlbum, {
+      mediaGroupId: args.mediaGroupId,
+    });
+    const svc = photoService();
+    const fileIds = (state.fileIds ?? []).slice(0, 10);
+    if (!svc || fileIds.length === 0) return;
+    await runJob(ctx, state.chatId, state.telegramId, svc, {
+      photoFileIds: fileIds,
+      details: state.caption ?? undefined,
+    });
+  },
+});
 
 // --- callbacks & checkout ---------------------------------------------------------
 

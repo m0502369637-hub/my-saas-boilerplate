@@ -7,7 +7,9 @@
 /** What the service extracts from the user's Telegram message. */
 export interface JobInput {
   prompt?: string;
-  photoFileId?: string;
+  photoFileId?: string; // single photo (non-album message)
+  photoFileIds?: string[]; // album (media group) — multi-photo services
+  details?: string; // photo caption, for services that take text alongside photos
 }
 
 /**
@@ -16,8 +18,9 @@ export interface JobInput {
  * (after /upload/image). Services consume whichever matches their provider.
  */
 export interface ImageRefs {
-  falUrl?: string;
-  comfyName?: string;
+  falUrl?: string; // single image (fal)
+  falUrls?: string[]; // album images (fal)
+  comfyName?: string; // single image (comfyui — multi-photo uses the first)
 }
 
 export type ProviderPayload =

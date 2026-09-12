@@ -108,13 +108,21 @@ export const submitJob = internalAction({
     try {
       const input = (job.input ?? {}) as JobInput;
       const images: ImageRefs = {};
-      if (input.photoFileId) {
-        const bytes = await telegram.downloadPhoto(input.photoFileId);
+      const photoIds = input.photoFileIds ?? (input.photoFileId ? [input.photoFileId] : []);
+      if (photoIds.length > 0) {
         if (job.provider === "comfyui") {
+          // ComfyUI LoadImage takes one file; multi-photo services use the first.
+          const bytes = await telegram.downloadPhoto(photoIds[0]);
           const up = await comfy.uploadImage(bytes, "photo.jpg");
           images.comfyName = up.name;
         } else {
-          images.falUrl = await fal.uploadImage(bytes, "photo.jpg");
+          const urls: string[] = [];
+          for (const id of photoIds.slice(0, 10)) {
+            const bytes = await telegram.downloadPhoto(id);
+            urls.push(await fal.uploadImage(bytes, "photo.jpg"));
+          }
+          images.falUrls = urls;
+          images.falUrl = urls[0];
         }
       }
 
