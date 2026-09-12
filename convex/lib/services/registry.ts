@@ -24,9 +24,3 @@ export function photoService(): Service | null {
 export function promptService(): Service | null {
   return Object.values(SERVICES).find((s) => s.config.trigger.kind === "prompt") ?? null;
 }
-
-export function serviceCostsLine(): string {
-  return Object.values(SERVICES)
-    .map((s) => `${s.config.cost} ⭐`)
-    .join(" / ");
-}

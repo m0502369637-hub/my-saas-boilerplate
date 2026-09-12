@@ -62,11 +62,14 @@ async function refund(ctx: MutationCtx, job: JobRow): Promise<void> {
 /**
  * Balance gate + job row + charge, all in ONE transaction: if the wallet
  * can't cover the cost, nothing is written and { ok: false } comes back.
+ * `cost` comes from the caller (read from the SERVICE_COST env var there);
+ * the price is stamped on the job so refunds always match the charge.
  */
 export const createJob = internalMutation({
   args: {
     telegramId: v.number(),
     service: v.string(),
+    cost: v.number(),
     input: v.optional(v.any()),
   },
   handler: async (ctx, args) => {
@@ -78,11 +81,11 @@ export const createJob = internalMutation({
       .withIndex("by_telegramId", (q) => q.eq("telegramId", args.telegramId))
       .first();
     const balance = user?.balance ?? 0;
-    if (!user || balance < svc.config.cost) {
+    if (!user || balance < args.cost) {
       return { ok: false, reason: "insufficient" as const, balance };
     }
 
-    await ctx.db.patch(user._id, { balance: balance - svc.config.cost });
+    await ctx.db.patch(user._id, { balance: balance - args.cost });
 
     const now = Date.now();
     const jobId = await ctx.db.insert("jobs", {
@@ -90,7 +93,7 @@ export const createJob = internalMutation({
       service: svc.config.name,
       provider: svc.config.provider,
       status: "queued",
-      cost: svc.config.cost,
+      cost: args.cost,
       input: args.input,
       pollAfterMs: svc.config.pollAfterMs,
       maxJobAgeMs: svc.config.maxJobAgeMs,
@@ -100,7 +103,7 @@ export const createJob = internalMutation({
     await ctx.db.insert("payments", {
       telegramId: args.telegramId,
       kind: "charge",
-      amount: svc.config.cost,
+      amount: args.cost,
       jobId,
       description: `charge for ${svc.config.name}`,
     });

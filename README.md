@@ -79,6 +79,7 @@ Prereqs: Node ≥ 20, a Telegram bot (created in @BotFather), a
    npx convex env set BOT_TOKEN '123456:ABC…'        # @BotFather → your bot → API token
    npx convex env set WEBHOOK_SECRET "$(openssl rand -hex 16)"
    npx convex env set PROVIDER_PAYLOAD '{"model":"…","input":{…}}'   # or {"workflow":{…}}
+   npx convex env set SERVICE_COST '100'              # Stars per generation (change anytime)
    npx convex env set FAL_KEY '…'                    # https://fal.ai/dashboard/keys
    # and/or, for ComfyUI services:
    npx convex env set COMFYUI_BASE_URL 'https://…'
@@ -126,6 +127,7 @@ the typed `env` import in functions.
 | `BOT_TOKEN` | ✅ | Classic Bot API token |
 | `WEBHOOK_SECRET` | ✅ | `setWebhook` secret_token; verified on every delivery |
 | `PROVIDER_PAYLOAD` | ✅ | JSON: the fal model + input template, or the ComfyUI workflow graph — see [Provider payload](#provider-payload) |
+| `SERVICE_COST` | ✅ | Price per generation in Stars (positive integer) — **the only place pricing lives**; change anytime with `npx convex env set SERVICE_COST '120'`, no redeploy |
 | `FAL_KEY` | fal services | fal.ai API key |
 | `COMFYUI_BASE_URL` | comfyui services | ComfyUI-compatible endpoint URL |
 | `COMFYUI_API_KEY` | optional | Bearer for hosted ComfyUI |
@@ -199,8 +201,9 @@ folder, register it, and deploy in the new repository — full recipe in
 
 A service is two pure files:
 
-- `convex/lib/services/<name>/config.ts` — name, title, cost, provider,
+- `convex/lib/services/<name>/config.ts` — name, title, description, provider,
   `pollAfterMs`, `maxJobAgeMs`, trigger, and the ComfyUI injection knobs.
+  **No price here** — pricing is the `SERVICE_COST` env var.
 - `convex/lib/services/<name>/index.ts` — `buildProviderPayload()`: merges the
   deploy-time `PROVIDER_PAYLOAD` with the runtime photo/prompt.
 
@@ -216,5 +219,4 @@ No schema change, no state-machine change.
 - HTTP action request/response bodies cap at 20 MB (updates are tiny).
 - Callback payloads ≤ 64 bytes (`check:<convex-id>` fits).
 - fal video is billed per second of output; `fal-ai/veo3.1/image-to-video` at
-  720p/8s costs roughly $1.6 — price your Stars accordingly (this example:
-  100 ⭐).
+  720p/8s costs roughly $1.6 — set `SERVICE_COST` accordingly.

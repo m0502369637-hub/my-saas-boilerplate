@@ -9,8 +9,7 @@ import type { ServiceConfig } from "../types";
 export const config: ServiceConfig = {
   name: "image_to_video",
   title: "🎬 Image → Video",
-  description: "Send a photo and I'll turn it into a short video — 100 ⭐ per generation.",
-  cost: 100, // Stars per generation (internal wallet)
+  description: "Send a photo and I'll turn it into a short video.",
   provider: "fal", // 'fal' | 'comfyui'
   maxJobAgeMs: 15 * 60 * 1000, // 15 min → auto-timeout + refund
   pollAfterMs: 60 * 1000, // poll the provider at most once per minute

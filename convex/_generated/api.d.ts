@@ -19,6 +19,7 @@ import type * as jobs from "../jobs.js";
 import type * as jobs_actions from "../jobs_actions.js";
 import type * as lib_format from "../lib/format.js";
 import type * as lib_http from "../lib/http.js";
+import type * as lib_pricing from "../lib/pricing.js";
 import type * as lib_providers_comfyui from "../lib/providers/comfyui.js";
 import type * as lib_providers_fal from "../lib/providers/fal.js";
 import type * as lib_services_image_to_video_config from "../lib/services/image_to_video/config.js";
@@ -47,6 +48,7 @@ declare const fullApi: ApiFromModules<{
   jobs_actions: typeof jobs_actions;
   "lib/format": typeof lib_format;
   "lib/http": typeof lib_http;
+  "lib/pricing": typeof lib_pricing;
   "lib/providers/comfyui": typeof lib_providers_comfyui;
   "lib/providers/fal": typeof lib_providers_fal;
   "lib/services/image_to_video/config": typeof lib_services_image_to_video_config;

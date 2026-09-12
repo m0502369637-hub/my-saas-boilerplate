@@ -13,6 +13,10 @@ export default defineApp({
     //   fal:     {"model": "fal-ai/…", "input": {…model input template…}}
     //   comfyui: {"workflow": {…ComfyUI API-format graph…}}
     PROVIDER_PAYLOAD: v.string(),
+    // Price per generation, in Telegram Stars (positive integer). Lives ONLY
+    // here — change it anytime without redeploying:
+    //   npx convex env set SERVICE_COST '120'
+    SERVICE_COST: v.string(),
     FAL_KEY: v.optional(v.string()), // https://fal.ai/dashboard/keys
     COMFYUI_BASE_URL: v.optional(v.string()), // e.g. https://your-comfyui.example.com
     COMFYUI_API_KEY: v.optional(v.string()), // optional bearer for hosted ComfyUI

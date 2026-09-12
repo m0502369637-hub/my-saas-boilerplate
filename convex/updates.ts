@@ -4,7 +4,8 @@ import { internal } from "./_generated/api";
 import type { JobRow } from "./queries";
 import type { Id } from "./_generated/dataModel";
 import type { Service } from "./lib/services/types";
-import { getService, photoService, promptService, serviceCostsLine } from "./lib/services/registry";
+import { getService, photoService, promptService } from "./lib/services/registry";
+import { serviceCost } from "./lib/pricing";
 import { renderStatusText, statusKeyboard, statusLabel, TERMINAL_STATUSES } from "./lib/format";
 import * as telegram from "./lib/telegram";
 
@@ -164,11 +165,16 @@ async function handleMessage(ctx: Ctx, message: Record<string, any>): Promise<vo
     }
     case "/balance": {
       const balance = await ctx.runQuery(internal.users.getBalance, { telegramId: from.id });
-      await telegram.sendMessage(
-        chatId,
-        `💰 Balance: <b>${balance} ⭐</b>\nOne generation costs ${serviceCostsLine()}.`,
-        { parseMode: "HTML" },
-      );
+      const costText = (() => {
+        try {
+          return `One generation costs <b>${serviceCost()} ⭐</b>.`;
+        } catch {
+          return "Pricing is not configured yet.";
+        }
+      })();
+      await telegram.sendMessage(chatId, `💰 Balance: <b>${balance} ⭐</b>\n${costText}`, {
+        parseMode: "HTML",
+      });
       return;
     }
     case "/jobs": {
@@ -215,15 +221,28 @@ async function runJob(
   svc: Service,
   input: Record<string, unknown>,
 ): Promise<void> {
+  // The price lives in the SERVICE_COST env var — never in the repo.
+  let cost: number;
+  try {
+    cost = serviceCost();
+  } catch (e) {
+    await telegram.sendMessage(
+      chatId,
+      `⚙️ Pricing is not configured (${e instanceof Error ? e.message : String(e)}).`,
+    );
+    return;
+  }
+
   const created = await ctx.runMutation(internal.jobs.createJob, {
     telegramId,
     service: svc.config.name,
+    cost,
     input,
   });
 
   if (!created.ok) {
-    await telegram.sendInvoice(chatId, svc.config.cost, `Top up ${svc.config.cost} ⭐ for one ${svc.config.title} generation.`);
-    await telegram.sendMessage(chatId, INSUFFICIENT_TEXT(svc.config.cost));
+    await telegram.sendInvoice(chatId, cost, `Top up ${cost} ⭐ for one ${svc.config.title} generation.`);
+    await telegram.sendMessage(chatId, INSUFFICIENT_TEXT(cost));
     return;
   }
 
@@ -346,6 +365,11 @@ function helpText(): string {
   if (photo) lines.push(photo.config.description);
   if (prompt && prompt.config.trigger.kind === "prompt") {
     lines.push(`Send ${prompt.config.trigger.command} &lt;prompt&gt; — ${prompt.config.description}`);
+  }
+  try {
+    lines.push("", `💰 <b>${serviceCost()} ⭐</b> per generation`);
+  } catch {
+    lines.push("", "💰 pricing not configured");
   }
   lines.push("", "/balance — your wallet", "/jobs — your last 5 jobs", "/help — this message", "", "Failed or timed-out generations are refunded automatically.");
   return lines.join("\n");

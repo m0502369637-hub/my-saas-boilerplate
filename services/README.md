@@ -26,10 +26,11 @@ git remote add origin git@github.com:<you>/<service-name>-saas.git
 cp -r convex/lib/services/image_to_video convex/lib/services/<service_name>
 ```
 
-- `config.ts` — set `name` (registry key), `title`, `description`, `cost`
-  (Stars), `provider` (`"fal"` or `"comfyui"`), `pollAfterMs`, `maxJobAgeMs`,
+- `config.ts` — set `name` (registry key), `title`, `description`,
+  `provider` (`"fal"` or `"comfyui"`), `pollAfterMs`, `maxJobAgeMs`,
   `trigger` (`{ kind: "photo" }` or `{ kind: "prompt", command: "/imagine" }`),
-  and the ComfyUI injection knobs.
+  and the ComfyUI injection knobs. No price here — pricing is the
+  `SERVICE_COST` env var.
 - `index.ts` — `buildProviderPayload(payload, input, images)`: merge the
   deploy-time payload with `input.prompt` / `input.photoFileId` and the
   resolved image refs (`images.falUrl` / `images.comfyName`). Pure function —
@@ -72,6 +73,7 @@ npx convex env set BOT_TOKEN '…'
 npx convex env set WEBHOOK_SECRET "$(openssl rand -hex 16)"
 npx convex env set PROVIDER_PAYLOAD '{"model":"fal-ai/…","input":{…}}'   # fal
 # …or: npx convex env set PROVIDER_PAYLOAD '{"workflow":{…}}'             # comfyui
+npx convex env set SERVICE_COST '100'       # Stars per generation — change anytime, no redeploy
 npx convex env set FAL_KEY '…'       # and/or COMFYUI_BASE_URL / COMFYUI_API_KEY
 npm run deploy
 cp .env.example .env.local           # fill BOT_TOKEN + WEBHOOK_SECRET

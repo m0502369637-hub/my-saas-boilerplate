@@ -10,9 +10,9 @@ over any assumption in this file.
 A monetised Telegram SaaS bot on **Convex**: classic Bot API webhook →
 Convex HTTP action → Convex DB / scheduled functions / cron → provider
 (fal.ai or ComfyUI) → media back to the user. One worked-example service
-(`lib/services/image_to_video`), 100 ⭐ per generation, fully async
-refund-safe job queue. This repo is the **base template**: each real SaaS is
-cloned into its own repository (see `services/README.md`).
+(`lib/services/image_to_video`), fully async refund-safe job queue. Pricing
+lives only in the `SERVICE_COST` env var. This repo is the **base template**:
+each real SaaS is cloned into its own repository (see `services/README.md`).
 
 ## Layout
 
@@ -76,9 +76,10 @@ SaaS is a new repository:
 1. `git clone` this repo into the new service's repo (keep `upstream` pointing
    here to pull plumbing updates later).
 2. Copy `convex/lib/services/image_to_video/` → `convex/lib/services/<name>/`.
-3. Edit `config.ts` (name, title, cost, provider, `pollAfterMs`,
+3. Edit `config.ts` (name, title, description, provider, `pollAfterMs`,
    `maxJobAgeMs`, trigger, injection knobs). The provider payload is NOT a
-   file — supply it per deployment via `PROVIDER_PAYLOAD`.
+   file — supply it per deployment via `PROVIDER_PAYLOAD`. The price is NOT
+   a file either — it is the `SERVICE_COST` env var (set per deployment).
 4. Rewrite `index.ts`'s `buildProviderPayload` (pure — merge the payload with
    runtime photo/prompt; no network, no DB).
 5. Register in `convex/lib/services/registry.ts` (drop the example entry).

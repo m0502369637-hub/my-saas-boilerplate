@@ -32,10 +32,8 @@ export interface ServiceConfig {
   name: string;
   /** Human title shown in status cards. */
   title: string;
-  /** One-liner for /help and /start. */
+  /** One-liner for /help and /start (no price — that's the SERVICE_COST env var). */
   description: string;
-  /** Stars charged per generation (internal wallet). */
-  cost: number;
   provider: "fal" | "comfyui";
   /** Poll the provider at most once per this many ms (scheduler chain). */
   pollAfterMs: number;
