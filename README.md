@@ -8,24 +8,20 @@ refund-safe job queue built on Convex scheduled functions.
 **Each real SaaS is its own repository cloned from this one** — see
 [One service per repo](#one-service-per-repo).
 
-## Why Convex instead of Telegram's serverless platform
+## What's inside
 
-This boilerplate was originally built for Telegram's `tgcloud` serverless
-platform and later moved to Convex. The bot logic is identical; the platform
-differences that motivated the move:
+A classic self-hosted bot: you hold the `BOT_TOKEN` and point Telegram's
+webhook at Convex. In exchange you get real infrastructure:
 
-| | Telegram Serverless (tgcloud) | Convex (this repo) |
-| --- | --- | --- |
-| Bot runtime | Telegram's managed isolates, pre-authenticated `api` | Classic Bot API — you hold `BOT_TOKEN` |
-| Database | Platform's Drizzle-style DB | Convex DB (transactions, indexes) |
-| Cron / timers | ❌ none (piggyback hacks) | ✅ cron + durable scheduled functions |
-| Secrets | ❌ shipped in deployed code | ✅ env vars (`npx convex env set`) |
-| Inbound HTTP | ❌ none (external relay needed) | ✅ HTTP actions on `*.convex.site` |
-| npm packages | ❌ | ✅ (web-standard libs in functions, Node in `"use node"` actions) |
-| Job completion | sweep + polling + relay | scheduler chain + fal webhook + cron sweep |
-
-The cost: you run a classic bot — webhook management, token custody, and
-update idempotency are yours (all handled for you in this repo).
+- **Convex DB** — serializable-transaction mutations, indexes; the wallet and
+  job state machine live entirely inside transactional mutations.
+- **Scheduled functions + cron** — durable per-job polling chains plus a
+  minute-level safety-net sweep. No external queue or worker process.
+- **Env-var secrets** — `npx convex env set …`; nothing sensitive is committed.
+- **Inbound HTTP** — the webhook, the fal completion accelerator, and healthz
+  are plain HTTP actions on `*.convex.site`.
+- **npm + web-standards runtime** — fetch/Blob/FormData in actions, Node
+  runtime available via `"use node"` for anything heavier.
 
 ## Architecture
 
@@ -82,6 +78,7 @@ Prereqs: Node ≥ 20, a Telegram bot (created in @BotFather), a
    ```bash
    npx convex env set BOT_TOKEN '123456:ABC…'        # @BotFather → your bot → API token
    npx convex env set WEBHOOK_SECRET "$(openssl rand -hex 16)"
+   npx convex env set PROVIDER_PAYLOAD '{"model":"…","input":{…}}'   # or {"workflow":{…}}
    npx convex env set FAL_KEY '…'                    # https://fal.ai/dashboard/keys
    # and/or, for ComfyUI services:
    npx convex env set COMFYUI_BASE_URL 'https://…'
@@ -128,9 +125,36 @@ the typed `env` import in functions.
 | --- | --- | --- |
 | `BOT_TOKEN` | ✅ | Classic Bot API token |
 | `WEBHOOK_SECRET` | ✅ | `setWebhook` secret_token; verified on every delivery |
+| `PROVIDER_PAYLOAD` | ✅ | JSON: the fal model + input template, or the ComfyUI workflow graph — see [Provider payload](#provider-payload) |
 | `FAL_KEY` | fal services | fal.ai API key |
 | `COMFYUI_BASE_URL` | comfyui services | ComfyUI-compatible endpoint URL |
 | `COMFYUI_API_KEY` | optional | Bearer for hosted ComfyUI |
+
+## Provider payload
+
+The repo ships **no sample workflows and no model templates**. The
+submission payload is configuration, supplied per deployment through the
+`PROVIDER_PAYLOAD` env var and called at runtime against the provider API
+(fal queue API or ComfyUI `/prompt`). Runtime inputs are merged in: the
+user's photo becomes `input.image_url` (fal) or the `LoadImage` node's file
+name (ComfyUI), and the user's prompt (prompt-trigger services) replaces
+`input.prompt`.
+
+fal shape:
+
+```bash
+npx convex env set PROVIDER_PAYLOAD '{"model":"fal-ai/…","input":{…model input template…}}'
+```
+
+ComfyUI shape (the object from ComfyUI's "Save (API Format)"):
+
+```bash
+npx convex env set PROVIDER_PAYLOAD '{"workflow":{…API-format graph…}}'
+```
+
+Image injection is matched by node `class_type` (defaults: `LoadImage`,
+`CLIPTextEncode`, `KSampler` — adjustable in the service's `config.ts`), so
+any exported graph works without editing code.
 
 ## How it works
 
@@ -173,16 +197,17 @@ owned exclusively by `convex/jobs.ts`.
 folder, register it, and deploy in the new repository — full recipe in
 [`services/README.md`](services/README.md).
 
-A service is three pure files:
+A service is two pure files:
 
 - `convex/lib/services/<name>/config.ts` — name, title, cost, provider,
-  `pollAfterMs`, `maxJobAgeMs`, trigger.
-- `convex/lib/services/<name>/fal_workflow.ts` and/or `comfy_workflow.ts` —
-  model + input template / API-format workflow.
-- `convex/lib/services/<name>/index.ts` — `buildProviderPayload()`.
+  `pollAfterMs`, `maxJobAgeMs`, trigger, and the ComfyUI injection knobs.
+- `convex/lib/services/<name>/index.ts` — `buildProviderPayload()`: merges the
+  deploy-time `PROVIDER_PAYLOAD` with the runtime photo/prompt.
 
-Then register it in `convex/lib/services/registry.ts` and route the trigger in
-`convex/updates.ts`. No schema change, no state-machine change.
+The payload itself is configuration, never a file in this repo — set it with
+`npx convex env set PROVIDER_PAYLOAD '…'`. Then register the service in
+`convex/lib/services/registry.ts` and route the trigger in `convex/updates.ts`.
+No schema change, no state-machine change.
 
 ## Limits worth knowing
 

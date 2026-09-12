@@ -1,5 +1,6 @@
 import { v } from "convex/values";
 import { internalAction } from "./_generated/server";
+import { env } from "./_generated/server";
 import { internal } from "./_generated/api";
 import type { JobRow } from "./queries";
 import { getService } from "./lib/services/registry";
@@ -18,6 +19,25 @@ import type { ImageRefs, JobInput } from "./lib/services/types";
 
 function errMsg(e: unknown): string {
   return e instanceof Error ? e.message : String(e);
+}
+
+/**
+ * The provider submission payload, supplied at deploy time (PROVIDER_PAYLOAD
+ * env var). The repo carries no sample workflows — this is the single source
+ * of the fal model/input template or the ComfyUI workflow graph.
+ */
+function providerPayload(): Record<string, unknown> {
+  const raw = env.PROVIDER_PAYLOAD;
+  if (!raw) throw new Error("PROVIDER_PAYLOAD env var is not set (npx convex env set PROVIDER_PAYLOAD '…')");
+  try {
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      throw new Error("not a JSON object");
+    }
+    return parsed as Record<string, unknown>;
+  } catch (e) {
+    throw new Error(`PROVIDER_PAYLOAD is not valid JSON: ${errMsg(e)}`);
+  }
 }
 
 async function notify(ctx: { runQuery: Function }, chatId: number, text: string): Promise<void> {
@@ -98,7 +118,7 @@ export const submitJob = internalAction({
         }
       }
 
-      const payload = svc.buildProviderPayload(input, images);
+      const payload = svc.buildProviderPayload(providerPayload(), input, images);
       if (payload.kind === "fal") {
         const res = await fal.submitRequest({
           model: payload.model,

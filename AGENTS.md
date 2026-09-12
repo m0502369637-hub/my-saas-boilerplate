@@ -19,7 +19,7 @@ cloned into its own repository (see `services/README.md`).
 | Path | Role |
 | --- | --- |
 | `convex/**` | Deployed Convex code (queries, mutations, actions, http, crons, schema). |
-| `convex/lib/services/<name>/` | One service per folder: `config.ts`, `fal_workflow.ts` / `comfy_workflow.ts`, `index.ts`. Pure modules. |
+| `convex/lib/services/<name>/` | One service per folder: `config.ts` + `index.ts` only. Pure modules. **No workflow/template files** — the payload comes from the `PROVIDER_PAYLOAD` env var. |
 | `convex/_generated/` | Generated types — **committed** (code won't typecheck without it). Regenerate with `npx convex codegen --system-udfs --init` after schema/env changes; `npx convex dev`/`deploy` regenerate too. |
 | `scripts/*.ts` | Local-only tooling: `dev-poll.ts` (long polling in dev), `set-webhook.ts`. |
 | everything else | Docs, `package.json`, `.env.example`. |
@@ -37,7 +37,9 @@ cloned into its own repository (see `services/README.md`).
 3. **`env` only, never `process.env` for your own vars.** Env vars are
    declared in `convex/convex.config.ts` and read via the typed `env` import
    from `_generated/server`. (`process.env.CONVEX_SITE_URL` is the one
-   system-var exception, used for the fal webhook URL.)
+   system-var exception, used for the fal webhook URL.) The provider
+   submission payload is `PROVIDER_PAYLOAD` (JSON env var) — **never commit
+   model templates or workflow graphs to the repo.**
 4. **No foreign keys, no SQL.** Relations are plain fields + indexes; integrity
    is enforced in code. Mutations are serializable transactions — a
    read-check-write inside one mutation is race-free. Never read-modify-write
@@ -75,8 +77,10 @@ SaaS is a new repository:
    here to pull plumbing updates later).
 2. Copy `convex/lib/services/image_to_video/` → `convex/lib/services/<name>/`.
 3. Edit `config.ts` (name, title, cost, provider, `pollAfterMs`,
-   `maxJobAgeMs`, trigger) and the workflow files.
-4. Rewrite `index.ts`'s `buildProviderPayload` (pure — no network, no DB).
+   `maxJobAgeMs`, trigger, injection knobs). The provider payload is NOT a
+   file — supply it per deployment via `PROVIDER_PAYLOAD`.
+4. Rewrite `index.ts`'s `buildProviderPayload` (pure — merge the payload with
+   runtime photo/prompt; no network, no DB).
 5. Register in `convex/lib/services/registry.ts` (drop the example entry).
 6. Route the trigger in `convex/updates.ts`.
 7. Deploy: `npx convex dev` (link project) → `npx convex env set …` →

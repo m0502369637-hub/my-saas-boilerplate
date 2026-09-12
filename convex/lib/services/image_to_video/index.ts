@@ -1,22 +1,25 @@
 import { injectWorkflow } from "../../providers/comfyui";
 import type { ImageRefs, JobInput, ProviderPayload, Service } from "../types";
-import { comfyuiConfig, config, falConfig } from "./config";
-import { inputTemplate, model } from "./fal_workflow";
-import { workflow } from "./comfy_workflow";
+import { comfyuiConfig, config } from "./config";
 
 // lib/services/image_to_video/index.ts — the worked-example service.
 //
-// PURE module: buildProviderPayload() only assembles the submission payload.
-// All I/O (photo download, provider upload/submit, polling, delivery) lives in
-// the generic plumbing — this file never touches the network or the DB.
+// PURE module: buildProviderPayload() only merges the deploy-time payload
+// (PROVIDER_PAYLOAD env var) with the runtime photo. No workflow samples and
+// no network/DB access here — all I/O lives in the generic plumbing.
 
 export const imageToVideo: Service = {
   config,
-  buildProviderPayload(input: JobInput, images: ImageRefs): ProviderPayload {
+  buildProviderPayload(
+    payload: Record<string, unknown>,
+    _input: JobInput,
+    images: ImageRefs,
+  ): ProviderPayload {
     if (config.provider === "comfyui") {
+      // payload = { workflow: { …ComfyUI API-format graph… } }
+      const workflow = (payload.workflow ?? payload) as Record<string, unknown>;
       const graph = injectWorkflow(workflow, {
         image: images.comfyName ?? null,
-        prompt: falConfig.prompt,
         seed: comfyuiConfig.seed,
         steps: comfyuiConfig.steps,
         imageNode: comfyuiConfig.inputNodes.image,
@@ -26,17 +29,14 @@ export const imageToVideo: Service = {
       return { kind: "comfyui", workflow: graph };
     }
 
-    return {
-      kind: "fal",
-      model: falConfig.model ?? model,
-      input: {
-        ...inputTemplate,
-        image_url: images.falUrl,
-        prompt: falConfig.prompt,
-        duration: falConfig.duration,
-        resolution: falConfig.resolution,
-        generate_audio: falConfig.generateAudio,
-      },
-    };
+    // payload = { model: "fal-ai/…", input: { …model input template… } }
+    const model = payload.model;
+    if (typeof model !== "string" || !model) {
+      throw new Error('PROVIDER_PAYLOAD is missing a "model" string (fal service)');
+    }
+    const template = (payload.input ?? {}) as Record<string, unknown>;
+    const finalInput: Record<string, unknown> = { ...template };
+    if (images.falUrl) finalInput.image_url = images.falUrl; // the user's photo
+    return { kind: "fal", model, input: finalInput };
   },
 };

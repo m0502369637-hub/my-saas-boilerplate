@@ -1,7 +1,11 @@
-import type { ServiceConfig } from "../types";
-
 // lib/services/image_to_video/config.ts — every knob of the worked-example
 // service. Clone this folder for a new service and edit this file first.
+//
+// The provider payload (fal model + input template, or the ComfyUI workflow
+// graph) is NOT here — it is supplied at deploy time via the PROVIDER_PAYLOAD
+// env var. This repo never ships sample workflows.
+import type { ServiceConfig } from "../types";
+
 export const config: ServiceConfig = {
   name: "image_to_video",
   title: "🎬 Image → Video",
@@ -13,23 +17,16 @@ export const config: ServiceConfig = {
   trigger: { kind: "photo" },
 };
 
-// Provider-specific knobs (kept out of ServiceConfig to stay provider-agnostic).
-export const falConfig = {
-  // Verified live: https://fal.ai/models/fal-ai/veo3.1/image-to-video
-  model: "fal-ai/veo3.1/image-to-video",
-  prompt: "gentle cinematic zoom", // default creative prompt
-  duration: "8s", // '4s' | '6s' | '8s'
-  resolution: "720p", // '720p' | '1080p' (4k also supported)
-  generateAudio: false, // audio doubles the provider's per-second price
-};
-
+// ComfyUI injection knobs — how runtime inputs are merged into YOUR workflow
+// (matched by class_type; see lib/providers/comfyui.ts#injectWorkflow).
+// These are wiring, not a workflow: the graph itself comes from
+// PROVIDER_PAYLOAD.
 export const comfyuiConfig = {
   inputNodes: {
     image: "LoadImage",
     prompt: "CLIPTextEncode",
     seed: "KSampler",
   },
-  outputNode: "VHS_VideoCombine",
-  seed: 12345, // fixed for reproducibility; null → workflow's own value
-  steps: null, // null → keep the workflow's own value
+  seed: null as number | null, // null → keep the workflow's own seed
+  steps: null as number | null, // null → keep the workflow's own value
 };

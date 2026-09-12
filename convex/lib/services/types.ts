@@ -44,6 +44,14 @@ export interface ServiceConfig {
 
 export interface Service {
   config: ServiceConfig;
-  /** Build the provider submission payload from user input + resolved images. */
-  buildProviderPayload(input: JobInput, images: ImageRefs): ProviderPayload;
+  /**
+   * Merge the env-provided payload (PROVIDER_PAYLOAD, parsed JSON) with the
+   * runtime inputs (user photo/prompt). The payload itself NEVER lives in
+   * this repo — no sample workflows, no model templates. Pure function.
+   */
+  buildProviderPayload(
+    payload: Record<string, unknown>,
+    input: JobInput,
+    images: ImageRefs,
+  ): ProviderPayload;
 }

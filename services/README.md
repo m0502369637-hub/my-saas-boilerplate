@@ -29,13 +29,11 @@ cp -r convex/lib/services/image_to_video convex/lib/services/<service_name>
 - `config.ts` — set `name` (registry key), `title`, `description`, `cost`
   (Stars), `provider` (`"fal"` or `"comfyui"`), `pollAfterMs`, `maxJobAgeMs`,
   `trigger` (`{ kind: "photo" }` or `{ kind: "prompt", command: "/imagine" }`),
-  and the provider knobs.
-- `fal_workflow.ts` — model id + input template (or delete for comfyui-only).
-- `comfy_workflow.ts` — paste your "Save (API Format)" export (or delete for
-  fal-only).
-- `index.ts` — `buildProviderPayload(input, images)`: assemble the payload
-  from `input.prompt` / `input.photoFileId` and the resolved image refs
-  (`images.falUrl` / `images.comfyName`). Pure function — no network, no DB.
+  and the ComfyUI injection knobs.
+- `index.ts` — `buildProviderPayload(payload, input, images)`: merge the
+  deploy-time payload with `input.prompt` / `input.photoFileId` and the
+  resolved image refs (`images.falUrl` / `images.comfyName`). Pure function —
+  no network, no DB. **The payload itself is NOT a file in this repo.**
 
 ## 3. Register it (and drop the example)
 
@@ -72,6 +70,8 @@ npm run typecheck      # tsc on convex/ + scripts/
 npx convex dev                       # login + create the new Convex project
 npx convex env set BOT_TOKEN '…'
 npx convex env set WEBHOOK_SECRET "$(openssl rand -hex 16)"
+npx convex env set PROVIDER_PAYLOAD '{"model":"fal-ai/…","input":{…}}'   # fal
+# …or: npx convex env set PROVIDER_PAYLOAD '{"workflow":{…}}'             # comfyui
 npx convex env set FAL_KEY '…'       # and/or COMFYUI_BASE_URL / COMFYUI_API_KEY
 npm run deploy
 cp .env.example .env.local           # fill BOT_TOKEN + WEBHOOK_SECRET
